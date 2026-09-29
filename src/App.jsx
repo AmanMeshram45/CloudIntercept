@@ -1,111 +1,79 @@
-import { useState, useEffect } from "react";
-import { GoogleOAuthProvider } from "@react-oauth/google";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { Toaster } from "@/components/ui/toaster"
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClientInstance } from '@/components/lib/query-client'
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import PageNotFound from '@/components/lib/PageNotFound';
+import { AuthProvider, useAuth } from '@/components/lib/AuthContext';
+import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import ScrollToTop from '@/components/ScrollToTop';
+import ProtectedRoute from '@/components/ProtectedRoute';
+// Add page imports here
+import Landing from '@/components/pages/Landing';
+import Dashboard from '@/components/pages/Dashboard';
+import Login from '@/components/pages/Login';
+import Register from '@/components/pages/Register';
+import ForgotPassword from '@/components/pages/ForgotPassword';
+import ResetPassword from '@/components/pages/ResetPassword';
 
-// UI Pages
-import HomePage from "./ui/HomePage/HomePage";
-import Login from "./ui/LoginPage/Login";
-import ForgotPassword from "./ui/ForgotPassword/ForgotPassword";
-import CreateAccount from "./ui/CreateAccount/CreateAccount";
-import AdvancedLogin from "./ui/AdvancedLogin/AdvancedLogin";
-import Dashboard from "./ui/Dashboard/Dashboard";
+const AuthenticatedApp = () => {
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "870630654060-p427495s5r1fub6v54qsk8hfl8lphg7c.apps.googleusercontent.com";
-
-function MainRouter() {
-  const { token, login, logout, loading } = useAuth();
-  const [view, setView] = useState("home");
-
-  useEffect(() => {
-    if (token) {
-      setView("dashboard");
-    } else if (view === "dashboard") {
-      setView("home");
-    }
-  }, [token]);
-
-  if (loading) {
+  // Show loading spinner while checking app public settings or auth
+  if (isLoadingPublicSettings || isLoadingAuth) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif", color: "#64748b" }}>
-        <h3>Verifying CloudIntercept session...</h3>
+      <div className="fixed inset-0 flex items-center justify-center bg-ci-bg">
+        <div className="w-8 h-8 border-4 border-white/10 border-t-ci-accent rounded-full animate-spin"></div>
       </div>
     );
   }
 
-  // If user is authenticated, show Dashboard
-  if (token || view === "dashboard") {
-    return <Dashboard onLogout={logout} />;
+  // Handle authentication errors
+  if (authError) {
+    if (authError.type === 'user_not_registered') {
+      return <UserNotRegisteredError />;
+    } else if (authError.type === 'auth_required') {
+      // Redirect to login automatically
+      navigateToLogin();
+      return null;
+    }
   }
 
-  // Unauthenticated routing views
-  if (view === "login") {
-    return (
-      <Login
-        onForgotPassword={() => setView("forgot")}
-        onCreateAccount={() => setView("create")}
-        onAdvancedLogin={() => setView("advanced")}
-        onLogin={() => {
-          // Re-sync auth context
-          const storedToken = localStorage.getItem("token");
-          const storedUser = localStorage.getItem("user");
-          if (storedToken && storedUser) {
-            try {
-              login(storedToken, JSON.parse(storedUser));
-            } catch (e) {
-              login(storedToken, null);
-            }
-          }
-          setView("dashboard");
-        }}
-      />
-    );
-  }
-
-  if (view === "forgot") {
-    return <ForgotPassword onBackToLogin={() => setView("login")} />;
-  }
-
-  if (view === "create") {
-    return <CreateAccount onBackToLogin={() => setView("login")} />;
-  }
-
-  if (view === "advanced") {
-    return (
-      <AdvancedLogin
-        onBackToLogin={() => setView("login")}
-        onLogin={() => {
-          const storedToken = localStorage.getItem("token");
-          const storedUser = localStorage.getItem("user");
-          if (storedToken && storedUser) {
-            try {
-              login(storedToken, JSON.parse(storedUser));
-            } catch (e) {
-              login(storedToken, null);
-            }
-          }
-          setView("dashboard");
-        }}
-      />
-    );
-  }
-
-  // Default: Landing Page
+  // Render the main app
   return (
-    <HomePage
-      onLogin={() => setView("login")}
-      onCreateAccount={() => setView("create")}
-    />
+    <Routes>
+      {/* Public marketing page */}
+      <Route path="/" element={<Landing />} />
+
+      {/* Auth routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
+      {/* Authenticated app */}
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Route>
+
+      <Route path="*" element={<PageNotFound />} />
+    </Routes>
   );
-}
+};
+
 
 function App() {
+
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthProvider>
-        <MainRouter />
-      </AuthProvider>
-    </GoogleOAuthProvider>
-  );
+    <AuthProvider>
+      <QueryClientProvider client={queryClientInstance}>
+        <Router>
+          <ScrollToTop />
+          <AuthenticatedApp />
+        </Router>
+        <Toaster />
+      </QueryClientProvider>
+    </AuthProvider>
+  )
 }
 
-export default App;
+export default App
